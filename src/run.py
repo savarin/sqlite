@@ -40,6 +40,8 @@ class PrepareResult(enum.Enum):
     PREPARE_SUCCESS = 0
     PREPARE_UNRECOGNIZED_STATEMENT = 1
     PREPARE_SYNTAX_ERROR = 2
+    PREPARE_STRING_TOO_LONG = 3
+    PREPARE_NEGATIVE_ID = 4
 
 
 class ExecuteResult(enum.Enum):
@@ -160,7 +162,16 @@ def prepare_statement(
         if len(arguments) < 4:
             return PrepareResult.PREPARE_SYNTAX_ERROR, None
 
-        row = Row(row_id=int(arguments[1]), username=arguments[2], email=arguments[3])
+        row_id = int(arguments[1])
+        _, _, username, email = arguments
+
+        if row_id < 0:
+            return PrepareResult.PREPARE_NEGATIVE_ID, None
+
+        if len(username) > USERNAME_SIZE or len(email) > EMAIL_SIZE:
+            return PrepareResult.PREPARE_STRING_TOO_LONG, None
+
+        row = Row(row_id=row_id, username=username, email=email)
         statement = Statement(
             statement_type=StatementType.STATEMENT_INSERT, row_to_insert=row
         )
@@ -280,12 +291,20 @@ if __name__ == "__main__":
         if prepare_result == PrepareResult.PREPARE_SUCCESS:
             pass
 
+        elif prepare_result == PrepareResult.PREPARE_UNRECOGNIZED_STATEMENT:
+            print(f"Unrecognized keyword at start of '{input_buffer.buffer}'")
+            continue
+
         elif prepare_result == PrepareResult.PREPARE_SYNTAX_ERROR:
             print("Syntax error. Could not parse statement.")
             continue
 
-        elif prepare_result == PrepareResult.PREPARE_UNRECOGNIZED_STATEMENT:
-            print(f"Unrecognized keyword at start of '{input_buffer.buffer}'")
+        elif prepare_result == PrepareResult.PREPARE_STRING_TOO_LONG:
+            print("String is too long.")
+            continue
+
+        elif prepare_result == PrepareResult.PREPARE_NEGATIVE_ID:
+            print("Identifier must be positive.")
             continue
 
         assert statement is not None
