@@ -104,9 +104,9 @@ def free_table(table: Table) -> None:
     table.num_rows = 0
 
 
-def print_row(row: Row) -> None:
+def format_row(row: Row) -> str:
     """ """
-    print(f"({str(row.row_id)}, {row.username}, {row.email})")
+    return f"({str(row.row_id)}, {row.username}, {row.email})"
 
 
 def serialize_row(row: Row) -> bytes:
@@ -124,8 +124,8 @@ def deserialize_row(row_bytes: bytes) -> Row:
     """ """
     return Row(
         row_id=int.from_bytes(row_bytes[:USERNAME_OFFSET], byteorder="big"),
-        username=row_bytes[USERNAME_OFFSET:EMAIL_OFFSET].decode("ascii"),
-        email=row_bytes[EMAIL_OFFSET:].decode("ascii"),
+        username=row_bytes[USERNAME_OFFSET:EMAIL_OFFSET].decode("ascii").rstrip("\x00"),
+        email=row_bytes[EMAIL_OFFSET:].decode("ascii").rstrip("\x00"),
     )
 
 
@@ -200,10 +200,12 @@ def insert_row(row_bytes: bytes, table: Table) -> Table:
     return table
 
 
-def execute_insert(statement: Statement, table: Table) -> Tuple[ExecuteResult, Table]:
+def execute_insert(
+    statement: Statement, table: Table
+) -> Tuple[ExecuteResult, Table, None]:
     """ """
     if table.num_rows >= TABLE_MAX_ROWS:
-        return ExecuteResult.EXECUTE_TABLE_FULL, table
+        return ExecuteResult.EXECUTE_TABLE_FULL, table, None
 
     row_to_insert = statement.row_to_insert
     assert row_to_insert is not None
@@ -211,7 +213,7 @@ def execute_insert(statement: Statement, table: Table) -> Tuple[ExecuteResult, T
     row_bytes = serialize_row(row_to_insert)
     table = insert_row(row_bytes, table)
 
-    return ExecuteResult.EXECUTE_SUCCESS, table
+    return ExecuteResult.EXECUTE_SUCCESS, table, None
 
 
 def select_row(table: Table, row_num: int) -> bytes:
@@ -220,19 +222,23 @@ def select_row(table: Table, row_num: int) -> bytes:
     return page[byte_offset : byte_offset + ROW_SIZE]
 
 
-def execute_select(statement: Statement, table: Table) -> Tuple[ExecuteResult, Table]:
+def execute_select(
+    statement: Statement, table: Table
+) -> Tuple[ExecuteResult, Table, List[str]]:
     """ """
+    result: List[str] = []
+
     for i in range(table.num_rows):
         row_bytes = select_row(table, i)
         row = deserialize_row(row_bytes)
-        print_row(row)
+        result.append(format_row(row))
 
-    return ExecuteResult.EXECUTE_SUCCESS, table
+    return ExecuteResult.EXECUTE_SUCCESS, table, result
 
 
 def execute_statement(
     statement: Statement, table: Table
-) -> Tuple[ExecuteResult, Table]:
+) -> Tuple[ExecuteResult, Table, Optional[List[str]]]:
     """ """
     if statement.statement_type == StatementType.STATEMENT_INSERT:
         return execute_insert(statement, table)
@@ -283,7 +289,11 @@ if __name__ == "__main__":
             continue
 
         assert statement is not None
-        execute_result, table = execute_statement(statement, table)
+        execute_result, table, result = execute_statement(statement, table)
+
+        if result is not None:
+            for item in result:
+                print(result)
 
         if execute_result == ExecuteResult.EXECUTE_SUCCESS:
             print("Executed.")
